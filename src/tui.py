@@ -1,39 +1,13 @@
-import json
 import os
-import re
 import sys
 
-import httpx
 import questionary as q
-from openai import OpenAI
 from questionary import Choice
 from sqlalchemy import select
 
-from database import Incident, SessionLocal
-
-
-def load_config():
-    with open("config.json") as f:
-        return json.load(f)
-
-
-def save_config(updated_config):
-    with open("config.json", "w", encoding="utf-8") as f:
-        json.dump(updated_config, f, indent=4, ensure_ascii=False)
-
-
-def extract_bash_commands(text: str) -> str:
-    matches = re.findall(
-        r"```(?:bash|sh|shell)?\s*(.*?)```", text, flags=re.DOTALL | re.IGNORECASE
-    )
-
-    if matches:
-        return matches[-1].strip()
-
-    if "MANUAL_INTERVENTION_REQUIRED" in text:
-        return "MANUAL_INTERVENTION_REQUIRED"
-
-    return text.strip()
+from src.ai_core import generate_solution
+from src.config import load_config, save_config
+from src.database import Incident, SessionLocal
 
 
 def configure_menu(config):
@@ -177,6 +151,7 @@ def configure_menu(config):
                         "========== System Setup ==========",
                         choices=[
                             Choice("1. Max log length", value="max_log"),
+                            Choice("2. Language", value="lang"),
                             Choice("<- Back", value="back"),
                         ],
                     ).ask()
@@ -190,6 +165,13 @@ def configure_menu(config):
                             config["system"]["max_log_length"] = int(new_len)
                             save_config(config)
                             print(f"\nMax log length changed to {new_len}.")
+                            input("Press Enter to continue...")
+                    elif sys_opt == "lang":
+                        new_lang = q.text("Enter language (e.g. en, ru): ").ask()
+                        if new_lang:
+                            config["system"]["language"] = new_lang
+                            save_config(config)
+                            print(f"\nLanguage changed to {new_lang}.")
                             input("Press Enter to continue...")
 
 
@@ -225,102 +207,88 @@ def run_fixer(config):
     db.commit()
     db.refresh(log)
 
-    os.system("clear" if os.name == "posix" else "cls")
-    print(f"\n[*] Analyzing log ID {log.id}...\n")
+    previous_error = None
+    attempt = 1
 
-    provider = config["ai_provider"]
-    provider_settings = config["providers"][provider]
+    while True:
+        os.system("clear" if os.name == "posix" else "cls")
+        print(f"\n[*] Analyzing log ID {log.id} (Attempt {attempt})...\n")
 
-    base_url = provider_settings["base_url"]
-    model = provider_settings["model"]
-    api_key = provider_settings["api_key"]
+        try:
+            clean_commands = generate_solution(log.raw_log, config, previous_error)
 
-    proxy_url = (
-        os.environ.get("ALL_PROXY")
-        or os.environ.get("all_proxy")
-        or os.environ.get("HTTPS_PROXY")
-        or os.environ.get("https_proxy")
-    )
+            print("=== Generated Bash Script ===")
+            print(clean_commands)
+            print("=============================\n")
 
-    if proxy_url and proxy_url.startswith("socks://"):
-        proxy_url = proxy_url.replace("socks://", "socks5://")
+            if (
+                clean_commands != "MANUAL_INTERVENTION_REQUIRED"
+                and clean_commands.strip()
+            ):
+                script_dir = "data/scripts"
+                os.makedirs(script_dir, exist_ok=True)
+                script_path = os.path.join(script_dir, f"fix_incident_{log.id}.sh")
 
-    if base_url and ("localhost" in base_url or "127.0.0.1" in base_url):
-        proxy_url = None
+                with open(script_path, "w", encoding="utf-8") as f:
+                    if not clean_commands.startswith("#!"):
+                        f.write("#!/bin/bash\n\n")
+                    f.write(clean_commands)
+                    f.write("\n")
 
-    custom_http_client = httpx.Client(
-        proxy=proxy_url if proxy_url else None, trust_env=False
-    )
+                os.chmod(script_path, 0o755)
 
-    client = OpenAI(
-        base_url=base_url,
-        api_key=api_key,
-        http_client=custom_http_client,
-    )
+                print(f"[+] Script saved successfully: {script_path}")
+                if q.confirm("Run it?").ask():
+                    os.system(f"./{script_path}")
 
-    prompt = f"{PROMPT_TEMPLATE}\n{log.raw_log}"
+                    action = q.select(
+                        "Did the script execute successfully?",
+                        choices=[
+                            Choice("Yes, issue is fixed", value="success"),
+                            Choice("No, I got an error", value="error"),
+                            Choice("Abort and exit", value="abort"),
+                        ],
+                    ).ask()
 
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-        )
+                    if action == "success":
+                        log.ai_summary = clean_commands
+                        log.status = "resolved"
+                        db.commit()
+                        print("\nIncident resolved successfully.")
+                        break
 
-        raw_response = response.choices[0].message.content
-        clean_commands = extract_bash_commands(raw_response)
+                    elif action == "error":
+                        error_output = q.text(
+                            "Paste the error output from the terminal:"
+                        ).ask()
+                        if error_output:
+                            if previous_error:
+                                previous_error += f"\n\n[FURTHER ERROR]\n{error_output}"
+                            else:
+                                previous_error = error_output
+                        attempt += 1
+                        continue
 
-        log.ai_summary = clean_commands
-        log.status = "resolved"
-        db.commit()
+                    else:
+                        log.status = "pending"
+                        db.commit()
+                        print("\nAborted. Task returned to pending status.")
+                        break
+                else:
+                    print(f"You can execute it via: ./{script_path}\n")
+                    input("Press enter to return to the main menu.")
+                    return
 
-        print("=== Generated Bash Script ===")
-        print(clean_commands)
-        print("=============================\n")
-
-        # Saving script logic
-        if clean_commands != "MANUAL_INTERVENTION_REQUIRED" and clean_commands.strip():
-            os.makedirs("scripts", exist_ok=True)
-            script_path = f"scripts/fix_incident_{log.id}.sh"
-
-            with open(script_path, "w", encoding="utf-8") as f:
-                if not clean_commands.startswith("#!"):
-                    f.write("#!/bin/bash\n\n")
-                f.write(clean_commands)
-                f.write("\n")
-
-            os.chmod(script_path, 0o755)  # Makes the file executable
-
-            print(f"[+] Script saved successfully: {script_path}")
-            if not q.confirm("Execute it now?").ask():
-                print(f"You can execute it youself with:   ./{script_path}\n")
-                input("Press Enter to continue...")
-                return
-            else:
-                os.system(f"./{script_path}")
-                input("Press Enter to continue...")
-                return
-
-    except Exception as e:
-        print(f"[-] AI error: {e}")
-        log.status = "pending"
-        db.commit()
+        except Exception as e:
+            print(f"[-] AI error: {e}")
+            log.status = "pending"
+            db.commit()
+            break
 
     input("Press Enter to return to menu...")
 
 
-PROMPT_TEMPLATE = """You are an Expert Linux DevOps Engineer resolving a production incident.
-CRITICAL SRE RULES:
-1. DIAGNOSE FIRST: 
-   - If a port is in use, DO NOT just restart the service. Write commands to find the blocking PID (e.g., `ss -tulpn` or `lsof`) and kill it.
-   - If the disk is full, DO NOT install new packages. Write safe cleanup commands (e.g., `apt-get clean`, `journalctl --vacuum-time=1d`).
-   - If a dpkg lock is held, write a command to find the blocking process before removing the lock.
-2. THINKING PROCESS: You MUST first write a brief text analysis of the root cause. Think step-by-step.
-3. FINAL CODE: After your text analysis, output the executable bash commands wrapped in a SINGLE markdown block: ```bash ... ```.
-System Log:\n"""
-
-
-def main():
+def main_menu():
     while True:
         os.system("clear" if os.name == "posix" else "cls")
 
@@ -347,7 +315,3 @@ def main():
                 os.system("clear" if os.name == "posix" else "cls")
                 print("Bye")
                 sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()

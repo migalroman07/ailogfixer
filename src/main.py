@@ -35,11 +35,3 @@ def post_log(log: LogRequest, db: Session = Depends(get_db)):
     db.refresh(new_incident)
 
     return new_incident
-
-
-# @app.delete("/api/logs")
-# def delete_log(log: LogRequest, db: Session = Depends(get_db)):
-#     incident = Incident(raw_log=log.raw_log)
-#     db.delete(incident)
-#     db.commit()
-#     return {"ok": True}
