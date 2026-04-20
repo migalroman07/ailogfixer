@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from database import Incident, SessionLocal
+from src.database import Incident, SessionLocal
 
 
 class LogRequest(BaseModel):
