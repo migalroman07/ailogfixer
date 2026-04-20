@@ -30,7 +30,7 @@ def extract_bash_commands(text: str) -> str:
     return text.strip()
 
 
-def generate_solution(raw_log: str, config: dict) -> str:
+def generate_solution(raw_log: str, config: dict, prev_error: str = "") -> str:
     provider = config["ai_provider"]
     provider_settings = config["providers"][provider]
 
@@ -62,10 +62,12 @@ def generate_solution(raw_log: str, config: dict) -> str:
     )
 
     max_len = config["system"].get("max_log_length", 2000)
-    language = config["system"].get("language", "en")
 
     trimmed_log = raw_log[-max_len:]
-    prompt = f"{PROMPT_TEMPLATE}\n[CRITICAL: Write all bash comments exclusively in {language.upper()} language]\n\n{trimmed_log}"
+    prompt = f"{PROMPT_TEMPLATE}\n{trimmed_log}"
+
+    if prev_error:
+        prompt += f"\n\n[USER FEEDBACK] The previous generated script failed with the following error:\n{previous_error}\n\nAnalyze this error and provide a fully updated and corrected bash script."
 
     response = client.chat.completions.create(
         model=model,

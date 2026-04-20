@@ -3,13 +3,9 @@ import os
 from sqlalchemy import Column, Integer, String, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-os.makedirs("data", exist_ok=True)
+SQLALCHEMY_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/ailogs"
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///data/database.db"
-
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

@@ -1,33 +1,23 @@
-import json
-import subprocess
-import sys
-import urllib.request
+import requests
 
 
-def get_system_logs():
-    args = ["journalctl", "-p", "3", "--since", "5 minutes ago", "--no-pager"]
-    return subprocess.run(args=args, capture_output=True, text=True)
+def send_log(text):
+    url = "http://127.0.0.1:8000/docs"
+    payload = {"raw_log": text}
+
+    # proxies = {
+    #     "http": None,
+    #     "https": None,
+    # }
+
+    try:
+        print(f"Sending log to {url} ...")
+        response = requests.post(url, json=payload, timeout=5)
+        print("Server response:", response.json())
+    except Exception as e:
+        print("Send error:", e)
 
 
-result = get_system_logs()
-log_text = result.stdout.strip()
-print(result.stdout)
-
-if log_text == "-- No entries --":
-    print("No new logs.")
-    sys.exit(0)
-
-payload = {"raw_log": log_text}
-json_bytes = json.dumps(payload).encode("utf-8")
-
-log_request = urllib.request.Request(
-    url="http://localhost:8000/api/logs", data=json_bytes, method="POST"
-)
-log_request.add_header("Content-Type", "application/json")
-
-print(log_text)
-
-try:
-    urllib.request.urlopen(log_request)
-except Exception as e:
-    print(e)
+if __name__ == "__main__":
+    dummy_log = "FATAL: Postgres OOM killer invoked. Cannot allocate memory."
+    send_log(dummy_log)

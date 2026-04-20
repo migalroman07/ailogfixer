@@ -207,40 +207,83 @@ def run_fixer(config):
     db.commit()
     db.refresh(log)
 
-    os.system("clear" if os.name == "posix" else "cls")
-    print(f"\n[*] Analyzing log ID {log.id}...\n")
+    previous_error = None
+    attempt = 1
 
-    try:
-        clean_commands = generate_solution(log.raw_log, config)
+    while True:
+        os.system("clear" if os.name == "posix" else "cls")
+        print(f"\n[*] Analyzing log ID {log.id} (Attempt {attempt})...\n")
 
-        log.ai_summary = clean_commands
-        log.status = "resolved"
-        db.commit()
+        try:
+            clean_commands = generate_solution(log.raw_log, config, previous_error)
 
-        print("=== Generated Bash Script ===")
-        print(clean_commands)
-        print("=============================\n")
+            print("=== Generated Bash Script ===")
+            print(clean_commands)
+            print("=============================\n")
 
-        if clean_commands != "MANUAL_INTERVENTION_REQUIRED" and clean_commands.strip():
-            script_dir = "data/scripts"
-            os.makedirs(script_dir, exist_ok=True)
-            script_path = os.path.join(script_dir, f"fix_incident_{log.id}.sh")
+            if (
+                clean_commands != "MANUAL_INTERVENTION_REQUIRED"
+                and clean_commands.strip()
+            ):
+                script_dir = "data/scripts"
+                os.makedirs(script_dir, exist_ok=True)
+                script_path = os.path.join(script_dir, f"fix_incident_{log.id}.sh")
 
-            with open(script_path, "w", encoding="utf-8") as f:
-                if not clean_commands.startswith("#!"):
-                    f.write("#!/bin/bash\n\n")
-                f.write(clean_commands)
-                f.write("\n")
+                with open(script_path, "w", encoding="utf-8") as f:
+                    if not clean_commands.startswith("#!"):
+                        f.write("#!/bin/bash\n\n")
+                    f.write(clean_commands)
+                    f.write("\n")
 
-            os.chmod(script_path, 0o755)
+                os.chmod(script_path, 0o755)
 
-            print(f"[+] Script saved successfully: {script_path}")
-            print(f"    Execute it via: ./{script_path}\n")
+                print(f"[+] Script saved successfully: {script_path}")
+                if q.confirm("Run it?").ask():
+                    os.system(f"./{script_path}")
 
-    except Exception as e:
-        print(f"[-] AI error: {e}")
-        log.status = "pending"
-        db.commit()
+                    action = q.select(
+                        "Did the script execute successfully?",
+                        choices=[
+                            Choice("Yes, issue is fixed", value="success"),
+                            Choice("No, I got an error", value="error"),
+                            Choice("Abort and exit", value="abort"),
+                        ],
+                    ).ask()
+
+                    if action == "success":
+                        log.ai_summary = clean_commands
+                        log.status = "resolved"
+                        db.commit()
+                        print("\nIncident resolved successfully.")
+                        break
+
+                    elif action == "error":
+                        error_output = q.text(
+                            "Paste the error output from the terminal:"
+                        ).ask()
+                        if error_output:
+                            if previous_error:
+                                previous_error += f"\n\n[FURTHER ERROR]\n{error_output}"
+                            else:
+                                previous_error = error_output
+                        attempt += 1
+                        continue
+
+                    else:
+                        log.status = "pending"
+                        db.commit()
+                        print("\nAborted. Task returned to pending status.")
+                        break
+                else:
+                    print(f"You can execute it via: ./{script_path}\n")
+                    input("Press enter to return to the main menu.")
+                    return
+
+        except Exception as e:
+            print(f"[-] AI error: {e}")
+            log.status = "pending"
+            db.commit()
+            break
 
     input("Press Enter to return to menu...")
 

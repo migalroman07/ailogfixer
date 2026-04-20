@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.database import Incident, SessionLocal
+from database import Incident, SessionLocal
 
 
 class LogRequest(BaseModel):
@@ -35,11 +35,3 @@ def post_log(log: LogRequest, db: Session = Depends(get_db)):
     db.refresh(new_incident)
 
     return new_incident
-
-
-# @app.delete("/api/logs")
-# def delete_log(log: LogRequest, db: Session = Depends(get_db)):
-#     incident = Incident(raw_log=log.raw_log)
-#     db.delete(incident)
-#     db.commit()
-#     return {"ok": True}
