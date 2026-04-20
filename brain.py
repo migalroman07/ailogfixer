@@ -28,7 +28,7 @@ def extract_bash_commands(text: str) -> str:
     )
 
     if matches:
-        return "\n".join(match.strip() for match in matches)
+        return matches[-1].strip()
 
     if "MANUAL_INTERVENTION_REQUIRED" in text:
         return "MANUAL_INTERVENTION_REQUIRED"
@@ -177,7 +177,6 @@ def configure_menu(config):
                         "========== System Setup ==========",
                         choices=[
                             Choice("1. Max log length", value="max_log"),
-                            Choice("2. Language", value="lang"),
                             Choice("<- Back", value="back"),
                         ],
                     ).ask()
@@ -191,13 +190,6 @@ def configure_menu(config):
                             config["system"]["max_log_length"] = int(new_len)
                             save_config(config)
                             print(f"\nMax log length changed to {new_len}.")
-                            input("Press Enter to continue...")
-                    elif sys_opt == "lang":
-                        new_lang = q.text("Enter language (e.g. en, ru): ").ask()
-                        if new_lang:
-                            config["system"]["language"] = new_lang
-                            save_config(config)
-                            print(f"\nLanguage changed to {new_lang}.")
                             input("Press Enter to continue...")
 
 
@@ -266,13 +258,13 @@ def run_fixer(config):
         http_client=custom_http_client,
     )
 
-    prompt = f"{prompt_template}\n{log.raw_log}"
+    prompt = f"{PROMPT_TEMPLATE}\n{log.raw_log}"
 
     try:
         response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
+            temperature=0.0,
         )
 
         raw_response = response.choices[0].message.content
@@ -286,6 +278,29 @@ def run_fixer(config):
         print(clean_commands)
         print("=============================\n")
 
+        # Saving script logic
+        if clean_commands != "MANUAL_INTERVENTION_REQUIRED" and clean_commands.strip():
+            os.makedirs("scripts", exist_ok=True)
+            script_path = f"scripts/fix_incident_{log.id}.sh"
+
+            with open(script_path, "w", encoding="utf-8") as f:
+                if not clean_commands.startswith("#!"):
+                    f.write("#!/bin/bash\n\n")
+                f.write(clean_commands)
+                f.write("\n")
+
+            os.chmod(script_path, 0o755)  # Makes the file executable
+
+            print(f"[+] Script saved successfully: {script_path}")
+            if not q.confirm("Execute it now?").ask():
+                print(f"You can execute it youself with:   ./{script_path}\n")
+                input("Press Enter to continue...")
+                return
+            else:
+                os.system(f"./{script_path}")
+                input("Press Enter to continue...")
+                return
+
     except Exception as e:
         print(f"[-] AI error: {e}")
         log.status = "pending"
@@ -294,7 +309,7 @@ def run_fixer(config):
     input("Press Enter to return to menu...")
 
 
-prompt_template = """You are an Expert Linux DevOps Engineer resolving a production incident.
+PROMPT_TEMPLATE = """You are an Expert Linux DevOps Engineer resolving a production incident.
 CRITICAL SRE RULES:
 1. DIAGNOSE FIRST: 
    - If a port is in use, DO NOT just restart the service. Write commands to find the blocking PID (e.g., `ss -tulpn` or `lsof`) and kill it.
