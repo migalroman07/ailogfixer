@@ -1,9 +1,22 @@
+import hashlib
+import re
+
 import requests
 
 
+def generate_log_hash(log_text: str) -> str:
+    # Delete the timestamps like Apr dd hh:mm:ss
+    clean_log = re.sub(r"^[A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+", "", log_text)
+
+    # delete process' PID
+    clean_log = re.sub(r"\[\d+\]:", ":", clean_log)
+
+    return hashlib.sha256(clean_log.encode("utf-8")).hexdigest()
+
+
 def send_log(text):
-    url = "http://127.0.0.1:8000/docs"
-    payload = {"raw_log": text}
+    url = "http://127.0.0.1:8000/api/logs"
+    payload = {"raw_log": text, "log_hash": generate_log_hash(text)}
 
     # proxies = {
     #     "http": None,

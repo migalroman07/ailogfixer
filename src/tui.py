@@ -1,3 +1,7 @@
+# tui.py
+# provides the ui and configures app.
+
+
 import os
 import sys
 
@@ -151,7 +155,6 @@ def configure_menu(config):
                         "========== System Setup ==========",
                         choices=[
                             Choice("1. Max log length", value="max_log"),
-                            Choice("2. Language", value="lang"),
                             Choice("<- Back", value="back"),
                         ],
                     ).ask()
@@ -165,13 +168,6 @@ def configure_menu(config):
                             config["system"]["max_log_length"] = int(new_len)
                             save_config(config)
                             print(f"\nMax log length changed to {new_len}.")
-                            input("Press Enter to continue...")
-                    elif sys_opt == "lang":
-                        new_lang = q.text("Enter language (e.g. en, ru): ").ask()
-                        if new_lang:
-                            config["system"]["language"] = new_lang
-                            save_config(config)
-                            print(f"\nLanguage changed to {new_lang}.")
                             input("Press Enter to continue...")
 
 
