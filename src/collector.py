@@ -20,7 +20,7 @@ def collect_logs():
 
     db = SessionLocal()
     try:
-        log_hash = hashlib.sha256(log.strip().encode("utf-8")).hexdigest()
+        log_hash = generate_log_hash(log.strip())
 
         existing_incident = (
             db.query(Incident)
@@ -61,23 +61,13 @@ def generate_log_hash(log_text: str) -> str:
     return hashlib.sha256(clean_log.encode("utf-8")).hexdigest()
 
 
-def send_log(text):
-    url = "http://127.0.0.1:8000/api/logs"
-    payload = {"raw_log": text, "log_hash": generate_log_hash(text)}
-
-    # proxies = {
-    #     "http": None,
-    #     "https": None,
-    # }
-
-    try:
-        print(f"Sending log to {url} ...")
-        response = requests.post(url, json=payload, timeout=5)
-        print("Server response:", response.json())
-    except Exception as e:
-        print("Send error:", e)
-
-
-if __name__ == "__main__":
-    dummy_log = "FATAL: Postgres OOM killer invoked. Cannot allocate memory."
-    send_log(dummy_log)
+# def send_log(text):
+#     url = "http://127.0.0.1:8000/api/logs"
+#     payload = {"raw_log": text, "log_hash": generate_log_hash(text)}
+#
+#     try:
+#         print(f"Sending log to {url} ...")
+#         response = requests.post(url, json=payload, timeout=5)
+#         print("Server response:", response.json())
+#     except Exception as e:
+#         print("Send error:", e)
