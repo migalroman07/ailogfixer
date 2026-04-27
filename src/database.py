@@ -19,9 +19,9 @@ class Incident(Base):
         String,
         unique=True,
         index=True,
-        nullable=False,
+        nullable=True,
     )
-    occurences = Column(Integer, default=1)
+    occurrences = Column(Integer, default=1)
 
 
 Base.metadata.create_all(bind=engine)

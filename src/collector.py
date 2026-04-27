@@ -1,7 +1,54 @@
 import hashlib
 import re
+import subprocess
 
 import requests
+
+from src.config import load_config
+from src.database import Incident, SessionLocal
+
+
+def collect_logs():
+    config = load_config()
+    INTERVAL = config["system"]["interval"]
+
+    cmd = ["journalctl", "-p", "3", "--since", f"{INTERVAL} minutes ago", "--no-pager"]
+    log = subprocess.run(cmd, capture_output=True, text=True).stdout
+
+    if not log or "No entries" in log:
+        return
+
+    db = SessionLocal()
+    try:
+        log_hash = hashlib.sha256(log.strip().encode("utf-8")).hexdigest()
+
+        existing_incident = (
+            db.query(Incident)
+            .filter(
+                Incident.log_hash == log_hash,
+                Incident.status.in_(["pending", "processing", "waiting"]),
+            )
+            .first()
+        )
+
+        if existing_incident:
+            existing_incident.occurrences += 1
+            db.commit()
+            db.refresh(existing_incident)
+            return
+        else:
+            new_incident = Incident(
+                raw_log=log,
+                status="pending",
+                log_hash=log_hash,
+            )
+
+            db.add(new_incident)
+            db.commit()
+            db.refresh(new_incident)
+
+    finally:
+        db.close()
 
 
 def generate_log_hash(log_text: str) -> str:
