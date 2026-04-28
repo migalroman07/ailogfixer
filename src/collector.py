@@ -2,8 +2,6 @@ import hashlib
 import re
 import subprocess
 
-import requests
-
 from src.config import load_config
 from src.database import Incident, SessionLocal
 

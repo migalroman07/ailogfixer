@@ -6,6 +6,7 @@ import sys
 import questionary as q
 from questionary import Choice
 from sqlalchemy import select
+from sqlalchemy.event import api
 
 from src.ai_core import generate_solution
 from src.config import load_config, save_config
@@ -17,7 +18,7 @@ def configure_menu(config):
         os.system("clear" if os.name == "posix" else "cls")
 
         aspect = q.select(
-            "=========== What you'd like to change? ==========",
+            "=========== What you'd like to configure? ==========",
             choices=[
                 Choice("1. Mode", value="mode"),
                 Choice("2. AI Provider/Model", value="provider"),
@@ -75,6 +76,7 @@ def configure_menu(config):
                         Choice("New provider (Manual enter)", value="new"),
                         Choice("<- Back", value="back"),
                     ]
+
                     new_provider = q.select(
                         "========== Select provider ==========", choices=providers
                     ).ask()
@@ -103,6 +105,18 @@ def configure_menu(config):
                         }
                     else:
                         provider = new_provider
+                        if config["providers"][provider]["api_key"] == "":
+                            api_key = q.text(
+                                f"API key not found. Enter API key for {provider}:"
+                            ).ask()
+                            if api_key:
+                                config["providers"][provider]["api_key"] = api_key
+                                os.system("clear" if os.name == "posix" else "cls")
+                                input("API key saved.")
+                            else:
+                                os.system("clear" if os.name == "posix" else "cls")
+                                input("API key is empty.")
+                                continue
 
                     config["ai_provider"] = provider
 

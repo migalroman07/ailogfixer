@@ -2,6 +2,7 @@ import os
 import re
 
 import httpx
+from dotenv import load_dotenv
 from openai import OpenAI
 
 PROMPT_TEMPLATE = """You are an Expert Linux DevOps Engineer resolving a production incident.
@@ -30,13 +31,22 @@ def extract_bash_commands(text: str) -> str:
     return text.strip()
 
 
+load_dotenv()
+
+
 def generate_solution(raw_log: str, config: dict, prev_error: str = "") -> str:
     provider = config["ai_provider"]
     provider_settings = config["providers"][provider]
 
-    base_url = provider_settings["base_url"]
+    base_url = provider_settings.get("base_url")
     model = provider_settings["model"]
-    api_key = provider_settings["api_key"]
+
+    key_placeholder = provider_settings.get("api_key")
+
+    actual_api_key = os.getenv(key_placeholder) if key_placeholder else None
+
+    if not actual_api_key:
+        actual_api_key = key_placeholder
 
     proxy_url = (
         os.environ.get("ALL_PROXY")
@@ -51,23 +61,20 @@ def generate_solution(raw_log: str, config: dict, prev_error: str = "") -> str:
     if base_url and ("localhost" in base_url or "127.0.0.1" in base_url):
         proxy_url = None
 
-    custom_http_client = httpx.Client(
-        proxy=proxy_url if proxy_url else None, trust_env=False
-    )
+    custom_client = httpx.Client(proxy=proxy_url)
 
     client = OpenAI(
         base_url=base_url,
-        api_key=api_key,
-        http_client=custom_http_client,
+        api_key=actual_api_key,
+        http_client=custom_client,
     )
-
     max_len = config["system"].get("max_log_length", 2000)
 
     trimmed_log = raw_log[-max_len:]
     prompt = f"{PROMPT_TEMPLATE}\n{trimmed_log}"
 
     if prev_error:
-        prompt += f"\n\n[USER FEEDBACK] The previous generated script failed with the following error:\n{previous_error}\n\nAnalyze this error and provide a fully updated and corrected bash script."
+        prompt += f"\n\n[USER FEEDBACK] The previous generated script failed with the following error:\n{prev_error}\n\nAnalyze this error and provide a fully updated and corrected bash script."
 
     response = client.chat.completions.create(
         model=model,

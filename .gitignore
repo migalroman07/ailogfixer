@@ -5,6 +5,7 @@ scripts/
 data/
 config.json
 database.db
+.env
 
 # Compiled files
 __pycache__/
