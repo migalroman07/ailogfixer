@@ -1,15 +1,78 @@
 # tui.py: SessionLocao
 # provides the ui and configures app.
 import os
+import re
 
 import questionary as q
 from questionary import Choice
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.ai_core import generate_log_desc, generate_solution
+from src.ai_core import generate_solution
 from src.config import load_config, save_config
 from src.database import Incident, SessionLocal
+
+
+def cleanup_menu():
+    """Deletes old logs and associated scripts to free space."""
+    db = SessionLocal()
+    try:
+        while True:
+            clear_screen()
+            target = q.select(
+                "========== Database Maintenance ==========",
+                choices=[
+                    Choice("1. Delete resolved logs only", value="resolved"),
+                    Choice("2. Wipe entire Database", value="all"),
+                    Choice("<- Back", value="back"),
+                ],
+            ).ask()
+
+            if not target or target == "back":
+                break
+
+            if not q.confirm("Are you absolutely sure?").ask():
+                continue
+
+            if target == "resolved":
+                logs = db.query(Incident).filter(Incident.status == "resolved").all()
+            else:
+                logs = db.query(Incident).all()
+
+            count = 0
+            for log in logs:
+                script_path = os.path.join(
+                    "data", "scripts", f"fix_incident_{log.id}.sh"
+                )
+                if os.path.exists(script_path):
+                    os.remove(script_path)
+                db.delete(log)
+                count += 1
+
+            db.commit()
+            print(f"\n[+] Cleanup complete. Deleted {count} records and scripts.")
+            input("Press Enter to return...")
+    finally:
+        db.close()
+
+
+def resolve_placeholders(script: str) -> str | None:
+    """Finds placeholders and prompts user. Returns None if aborted."""
+    placeholders = set(re.findall(r"<[A-Za-z0-9_-]+>|\[[A-Z0-9_]+\]", script))
+
+    if not placeholders:
+        return script
+
+    print("\n[!] Script requires manual variables.")
+    print("Hint: Press Ctrl+Z to suspend app, find info, then type 'fg' to return.\n")
+
+    for ph in placeholders:
+        val = q.text(f"Value for {ph} (empty to abort):").ask()
+        if not val:
+            return None
+        script = script.replace(ph, val)
+
+    return script
 
 
 def view_resolved_log(log: Incident):
@@ -85,7 +148,7 @@ def fix_log(log: Incident, config: dict, db: Session):
                     log.executed = False
                     db.commit()
                     continue
-                else:  # abort
+                else:
                     log.status = "waiting"
                     db.commit()
                     print("\nAborted. Task returned to waiting status.")
@@ -112,10 +175,21 @@ def fix_log(log: Incident, config: dict, db: Session):
                 db.commit()
                 break
 
-            print(f"💡 [AI Analysis]: {explanation}\n")
+            print(f"AI Analysis: {explanation}\n")
+
+            resolved_commands = resolve_placeholders(clean_commands)
+
+            if not resolved_commands:
+                print("[-] Aborted. Saved to waiting status.")
+                log.status = "waiting"
+                log.ai_summary = clean_commands
+                db.commit()
+                break
+
+            clean_commands = resolved_commands
+
             print(clean_commands)
             print("=============================================\n")
-
             script_dir = "data/scripts"
             os.makedirs(script_dir, exist_ok=True)
             script_path = os.path.join(script_dir, f"fix_incident_{log.id}.sh")
@@ -129,9 +203,14 @@ def fix_log(log: Incident, config: dict, db: Session):
             os.chmod(script_path, 0o755)
             print(f"[+] Script saved successfully: {script_path}")
 
+            # Warn about reboots
+            if re.search(r"\b(reboot|shutdown|init [06]|poweroff)\b", clean_commands):
+                print("\n[!] WARNING: Script contains reboot/shutdown commands.")
+
             if q.confirm("Run it?").ask():
                 log.executed = True
                 log.ai_summary = clean_commands
+                log.status = "waiting"
                 db.commit()
 
                 os.system(f"./{script_path}")
@@ -142,7 +221,7 @@ def fix_log(log: Incident, config: dict, db: Session):
                     log.status = "resolved"
                     log.executed = False
                     db.commit()
-                    print("\nIncident resolved successfully.")
+                    print("\n[+] Incident resolved.")
                     break
                 elif action == "error":
                     if err_text:
@@ -156,18 +235,15 @@ def fix_log(log: Incident, config: dict, db: Session):
                     db.commit()
                     continue
                 else:
-                    print(
-                        "\nTask saved in waiting status. You can provide feedback later."
-                    )
+                    print("\n[*] Saved in waiting status. Provide feedback later.")
                     break
             else:
-                print(f"You can execute it manually via: ./{script_path}\n")
+                print(f"Execute manually via: ./{script_path}\n")
                 log.status = "waiting"
                 log.ai_summary = clean_commands
                 db.commit()
-                input("Press enter to return to the main menu.")
+                input("Press enter to return...")
                 break
-
         except Exception as e:
             print(f"[-] App error: {e}")
             log.status = original_status
@@ -203,7 +279,7 @@ def fix_menu():
             if not requested_logs:
                 print(f"\nNo {log_status} incidents found.")
                 input("Press Enter to return...")
-                return
+                continue
 
             ui_choices = []
             for log in requested_logs:
@@ -389,11 +465,12 @@ def configure_menu(config):
 
             case "system":
                 while True:
-                    os.system("clear" if os.name == "posix" else "cls")
+                    clear_screen()
                     sys_opt = q.select(
                         "========== System Setup ==========",
                         choices=[
                             Choice("1. Max log length", value="max_log"),
+                            Choice("2. Toggle autonomous mode", value="auto_mode"),
                             Choice("<- Back", value="back"),
                         ],
                     ).ask()
@@ -408,6 +485,15 @@ def configure_menu(config):
                             save_config(config)
                             print(f"\nMax log length changed to {new_len}.")
                             input("Press Enter to continue...")
+
+                    elif sys_opt == "auto_mode":
+                        # TODO: implement warning message
+                        # if q.confirm("WARNING! ")
+                        curr = config["system"].get("autonomous_mode", False)
+                        config["system"]["autonomous_mode"] = not curr
+                        save_config(config)
+                        print(f"\nAutonomous mode set to: {not curr}")
+                        input("Press Enter to continue...")
 
 
 def main_menu():
@@ -424,7 +510,8 @@ def main_menu():
             choices=[
                 Choice(title="1. Fix issues", value="fix"),
                 Choice(title="2. Configure", value="configure"),
-                Choice(title="3. Exit", value="exit"),
+                Choice(title="3. Cleanup Database", value="cleanup"),
+                Choice(title="4. Exit", value="exit"),
             ],
         ).ask()
 
@@ -433,6 +520,8 @@ def main_menu():
                 fix_menu()
             case "configure":
                 configure_menu(config)
+            case "cleanup":
+                cleanup_menu()
             case _:
                 clear_screen()
                 print("Bye")
