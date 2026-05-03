@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.ai_core import generate_solution
-from src.config import load_config, save_config
+from src.config import BASE_DIR, load_config, save_config
 from src.database import Incident, SessionLocal
 
 
@@ -42,7 +42,7 @@ def cleanup_menu():
             count = 0
             for log in logs:
                 script_path = os.path.join(
-                    "data", "scripts", f"fix_incident_{log.id}.sh"
+                    BASE_DIR, "data", "scripts", f"fix_incident_{log.id}.sh"
                 )
                 if os.path.exists(script_path):
                     os.remove(script_path)
@@ -190,7 +190,7 @@ def fix_log(log: Incident, config: dict, db: Session):
 
             print(clean_commands)
             print("=============================================\n")
-            script_dir = "data/scripts"
+            script_dir = os.path.join(BASE_DIR, "data", "scripts")
             os.makedirs(script_dir, exist_ok=True)
             script_path = os.path.join(script_dir, f"fix_incident_{log.id}.sh")
 

@@ -93,5 +93,8 @@ def daemon_worker():
 
 
 def start_daemon():
-    thread = threading.Thread(target=daemon_worker, daemon=True)
-    thread.start()
+    daemon_worker()
+
+
+if __name__ == "__main__":
+    start_daemon()

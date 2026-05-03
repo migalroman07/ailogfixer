@@ -1,4 +1,10 @@
 import json
+import os
+
+# Dynamically calculate absolute path to the project root.
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
 
 def load_config():
