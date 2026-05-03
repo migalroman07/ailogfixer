@@ -69,7 +69,7 @@ def extract_json_data(text: str) -> tuple[str, str]:
 
     if not match:
         if "MANUAL_INTERVENTION_REQUIRED" in text:
-            return "Manual intervention required", "Manual intervention required"
+            return "Manual intervention required", "MANUAL_INTERVENTION_REQUIRED"
         return "AI response parsing error", text.strip()
 
     try:
@@ -92,6 +92,11 @@ def generate_solution(
     trimmed_log = raw_log[-max_len:]
     prompt = f"{PROMPT_TEMPLATE}\n{trimmed_log}"
 
+    if config.get("system", {}).get("autonomous_mode"):
+        prompt += "\n\nRULE: AUTONOMOUS MODE ON. DO NOT use placeholders. Write dynamic bash logic (e.g. use lsof/awk to find values)."
+    else:
+        prompt += "\n\nRULE: SAFE MODE. Use placeholders like <PID> or [IP] if exact values are unknown."
+
     if prev_error:
         prompt += f"\n\n[USER FEEDBACK] The previous generated script failed with the following error:\n{prev_error}\n\nAnalyze this error, update your JSON output to provide a fully corrected bash script."
 
@@ -103,7 +108,6 @@ def generate_solution(
         )
         raw_response = response.choices[0].message.content
 
-        # Unpack the response.
         desc, script = extract_json_data(raw_response)
 
         return desc, script
