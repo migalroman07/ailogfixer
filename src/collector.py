@@ -2,6 +2,7 @@ import hashlib
 import re
 import subprocess
 
+from src.ai_core import generate_log_desc
 from src.config import load_config
 from src.database import Incident, SessionLocal
 
@@ -39,6 +40,7 @@ def collect_logs():
                 raw_log=log,
                 status="pending",
                 log_hash=log_hash,
+                ai_log_review=generate_log_desc(log, config),
             )
 
             db.add(new_incident)
@@ -57,15 +59,3 @@ def generate_log_hash(log_text: str) -> str:
     clean_log = re.sub(r"\[\d+\]:", ":", clean_log)
 
     return hashlib.sha256(clean_log.encode("utf-8")).hexdigest()
-
-
-# def send_log(text):
-#     url = "http://127.0.0.1:8000/api/logs"
-#     payload = {"raw_log": text, "log_hash": generate_log_hash(text)}
-#
-#     try:
-#         print(f"Sending log to {url} ...")
-#         response = requests.post(url, json=payload, timeout=5)
-#         print("Server response:", response.json())
-#     except Exception as e:
-#         print("Send error:", e)

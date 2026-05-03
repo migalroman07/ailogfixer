@@ -25,7 +25,7 @@ def daemon_fixer(pending_logs, config, db: Session):
             db.commit()
             log_daemon(f"Processing incident ID {log.id}")
 
-            clean_commands = generate_solution(log.raw_log, config)
+            explanation, clean_commands = generate_solution(log.raw_log, config)
             if clean_commands and "MANUAL_INTERVENTION_REQUIRED" not in clean_commands:
                 script_dir = os.path.join("data", "scripts")
                 os.makedirs(script_dir, exist_ok=True)
@@ -41,6 +41,7 @@ def daemon_fixer(pending_logs, config, db: Session):
                 log_daemon(f"Script saved: {script_path}")
 
             log.ai_summary = clean_commands
+            log.ai_log_review = explanation
 
             log.status = "waiting"
             db.commit()
@@ -59,12 +60,12 @@ def daemon_worker():
     while True:
         try:
             config = load_config()
-            INTERVAL = config.get("system", {}).get("interval", 0)
+            interval = config.get("system", {}).get("interval", 30)
 
-            if INTERVAL > 0:
+            if interval > 0:
                 current_time = time.time()
 
-                if current_time - last_run_time >= INTERVAL * 60:
+                if current_time - last_run_time >= interval * 60:
                     collect_logs()
                     db: Session = SessionLocal()
                     try:

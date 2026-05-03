@@ -27,14 +27,17 @@ class Incident(Base):
     raw_log: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String, default="pending", nullable=False)
     ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     log_hash: Mapped[str | None] = mapped_column(
         String, unique=True, index=True, nullable=True
     )
+
     occurrences: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     attempt: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     executed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    ai_log_review: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 Base.metadata.create_all(bind=engine)
