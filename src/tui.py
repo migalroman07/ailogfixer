@@ -167,14 +167,40 @@ def fix_log(log: Incident, config: dict, db: Session):
                 )
                 print("========== [Generated Bash Script] ==========")
 
-            if not clean_commands or clean_commands == "MANUAL_INTERVENTION_REQUIRED":
-                print(f"[-] AI could not generate a script. Reason: {explanation}")
-                log.status = (
-                    original_status if original_status != "processing" else "pending"
-                )
-                db.commit()
-                break
+            if (
+                not clean_commands
+                or clean_commands == "MANUAL_INTERVENTION_REQUIRED"
+                or "API Error" in str(explanation)
+            ):
+                print(f"\n[-] AI could not generate a script. Reason: {explanation}\n")
 
+                action = q.select(
+                    "What to do with this broken log?",
+                    choices=[
+                        Choice("1. Retry AI generation right now", value="retry"),
+                        Choice("2. Delete this log and exit", value="delete"),
+                        Choice("3. Keep in waiting and exit", value="exit"),
+                    ],
+                ).ask()
+
+                if action == "retry":
+                    log.attempt += 1
+                    log.ai_summary = None
+                    log.ai_log_review = None
+                    db.commit()
+                    continue
+                elif action == "delete":
+                    db.delete(log)
+                    db.commit()
+                    print("\n[+] Log deleted successfully.")
+                    break
+                else:
+                    log.status = (
+                        "waiting" if original_status == "waiting" else "pending"
+                    )
+                    db.commit()
+                    break
+                # ==================================
             print(f"AI Analysis: {explanation}\n")
 
             resolved_commands = resolve_placeholders(clean_commands)
@@ -205,7 +231,7 @@ def fix_log(log: Incident, config: dict, db: Session):
 
             # Warn about reboots
             if re.search(r"\b(reboot|shutdown|init [06]|poweroff)\b", clean_commands):
-                print("\n[!] WARNING: Script contains reboot/shutdown commands.")
+                print("\nWARNING: Script contains reboot/shutdown commands.")
 
             if q.confirm("Run it?").ask():
                 log.executed = True
@@ -213,7 +239,7 @@ def fix_log(log: Incident, config: dict, db: Session):
                 log.status = "waiting"
                 db.commit()
 
-                os.system(f"./{script_path}")
+                os.system(f"{script_path}")
 
                 action, err_text = ask_for_feedback()
 
@@ -238,7 +264,7 @@ def fix_log(log: Incident, config: dict, db: Session):
                     print("\n[*] Saved in waiting status. Provide feedback later.")
                     break
             else:
-                print(f"Execute manually via: ./{script_path}\n")
+                print(f"Execute manually via: {script_path}\n")
                 log.status = "waiting"
                 log.ai_summary = clean_commands
                 db.commit()
@@ -509,15 +535,43 @@ def main_menu():
             f"=========== AI system fixer | Current model: {model} ==========\n",
             choices=[
                 Choice(title="1. Fix issues", value="fix"),
-                Choice(title="2. Configure", value="configure"),
-                Choice(title="3. Cleanup Database", value="cleanup"),
-                Choice(title="4. Exit", value="exit"),
+                Choice(title="2. Force system scan NOW", value="scan"),
+                Choice(title="3. Configure", value="configure"),
+                Choice(title="4. Cleanup Database", value="cleanup"),
+                Choice(title="5. Exit", value="exit"),
             ],
         ).ask()
 
         match option:
             case "fix":
                 fix_menu()
+            case "scan":
+                clear_screen()
+                time_choice = q.select(
+                    "How far back should we scan the system logs?",
+                    choices=[
+                        Choice("1. Last 1 hour", value="1 hour ago"),
+                        Choice("2. Last 24 hours", value="24 hours ago"),
+                        Choice("3. Last 7 days", value="7 days ago"),
+                        Choice("4. Since current system boot", value="boot"),
+                        Choice("<- Cancel", value="back"),
+                    ],
+                ).ask()
+
+                if not time_choice or time_choice == "back":
+                    continue
+
+                clear_screen()
+                print(f"[*] Force scanning journalctl ({time_choice})...\n")
+
+                from src.collector import collect_logs
+
+                collect_logs(custom_since=time_choice)
+
+                print(
+                    "[+] Scan complete! Check the 'Fix issues' -> 'Pending' or 'Waiting' menu."
+                )
+                input("\nPress Enter to return...")
             case "configure":
                 configure_menu(config)
             case "cleanup":
