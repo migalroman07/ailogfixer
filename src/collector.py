@@ -9,13 +9,21 @@ from src.config import load_config
 from src.database import Incident, SessionLocal
 
 
-def collect_logs():
-    """Fetches system logs and groups them by service name."""
+def collect_logs(custom_since: str = ""):
+    """Fetches system logs line-by-line in JSON format and groups them by service."""
     config = load_config()
     interval = config["system"]["interval"]
 
-    # Request logs in strict JSON format to parse them line by line
-    cmd = ["journalctl", "-p", "3", "--since", f"{interval} minutes ago", "-o", "json"]
+    cmd = ["journalctl", "-p", "3", "-o", "json"]
+
+    if custom_since == "boot":
+        cmd.append("-b")
+    elif custom_since:
+        cmd.extend(["--since", custom_since])
+    elif interval > 0:
+        cmd.extend(["--since", f"{interval} minutes ago"])
+    else:
+        cmd.extend(["--since", "24 hours ago"])
 
     result = subprocess.run(cmd, capture_output=True, text=True)
 
