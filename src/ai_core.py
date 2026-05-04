@@ -106,12 +106,17 @@ def generate_solution(
     max_len = config["system"].get("max_log_length", 2000)
     trimmed_log = raw_log[-max_len:]
 
-    # Append real-time metrics to the prompt
-    sys_snapshot = _get_system_snapshot()
+    features = config.get("features", {})
+
+    # System Snapshot
+    sys_snapshot = ""
+    if features.get("system_snapshot", True):
+        sys_snapshot = _get_system_snapshot()
+
     prompt = f"{PROMPT_TEMPLATE}\nSystem Log:\n{trimmed_log}{sys_snapshot}"
 
-    # Inject autonomous mode rules dynamically
-    if config.get("system", {}).get("autonomous_mode"):
+    # Autonomous Mode
+    if features.get("autonomous_mode", False):
         prompt += (
             "\n\nRULE: AUTONOMOUS MODE ON. DO NOT use placeholders. "
             "Write dynamic bash logic (e.g., use lsof/awk to find values automatically)."
@@ -145,9 +150,9 @@ def generate_solution(
 
 
 def generate_log_desc(raw_log: str, config: dict) -> str:
-    """Gets short log summary."""
-    if not config["system"].get("ai_log_review", False):
-        return "No desc"
+    """Generates description for the log to display before fix call."""
+    if not config.get("features", {}).get("auto_summary", True):
+        return "No summary."
 
     client, model = _get_ai_client(config)
 

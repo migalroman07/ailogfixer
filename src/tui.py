@@ -59,17 +59,23 @@ def cleanup_menu():
 
 def resolve_placeholders(script: str) -> str | None:
     """Finds placeholders and prompts user. Returns None if aborted."""
+    config = load_config()
+    features = config.get("features", {})
+
     placeholders = set(re.findall(r"<[A-Za-z0-9_-]+>|\[[A-Z0-9_]+\]", script))
 
     if not placeholders:
         return script
 
-    # Show the script context before asking for input
+    # Smart Placeholders.
+    if not features.get("smart_placeholders", True):
+        return script
+
     print("\n========== [Script Requires Manual Variables] ==========")
     print(script.strip())
     print("========================================================\n")
-
     print("[!] Please provide the missing values.")
+
     print(
         "Hint: Press Ctrl+Z to suspend app, find info in terminal, then type 'fg' to return.\n"
     )
@@ -123,8 +129,10 @@ def fix_log(log: Incident, config: dict, db: Session):
 
     while True:
         clear_screen()
+        config = load_config()
+        features = config.get("features", {})
 
-        if log.attempt > 3:
+        if features.get("circuit_breaker", True) and log.attempt > 3:
             print(
                 f"\n[-] LIMIT REACHED: AI failed to solve log ID {log.id} after 3 attempts."
             )
@@ -277,14 +285,16 @@ def fix_log(log: Incident, config: dict, db: Session):
                 db.commit()
 
                 # Save output.
+                auto_capture = features.get("auto_capture", True)
                 log_file = "/tmp/aifixer_script.log"
                 # Execute via bash. jj
-                cmd = f"bash -c 'set -o pipefail; {script_path} 2>&1 | tee {log_file}'"
+                if auto_capture:
+                    cmd = f"bash -c 'set -o pipefail; {script_path} 2>&1 | tee {log_file}'"
+                else:
+                    cmd = f"bash {script_path}"
 
                 print("\n[*] Executing script...")
                 exit_status = os.system(cmd)
-
-                # Translate into postcode.
                 exit_code = (exit_status >> 8) if os.name == "posix" else exit_status
 
                 if exit_code == 0:
@@ -293,21 +303,24 @@ def fix_log(log: Incident, config: dict, db: Session):
                 else:
                     print(f"\n[-] Script failed with bash exit code {exit_code}.")
 
-                    # Try to read captured error from terminal
+                    # Else try to read captured error from terminal
                     err_text = ""
-                    if os.path.exists(log_file):
+                    if auto_capture and os.path.exists(log_file):
                         with open(log_file, "r", encoding="utf-8") as f:
-                            # Send only 30 lines to not waste tokens.
+                            # Send only 30 lines not to waste tokens.
                             err_text = "".join(f.readlines()[-30:]).strip()
 
-                    if q.confirm(
-                        "Auto-capture this error and send to AI for a fix right now?"
-                    ).ask():
-                        action = "error"
-                        err_text = err_text or f"Unknown exit code {exit_code}"
+                        if q.confirm(
+                            "Auto-capture this error and send to AI for a fix right now?"
+                        ).ask():
+                            action = "error"
+                            err_text = err_text or f"Unknown exit code {exit_code}"
+                        else:
+                            action = "abort"
+                            err_text = None
                     else:
-                        action = "abort"
-                        err_text = None
+                        # Ask user for manual issue input.
+                        action, err_text = ask_for_feedback()
 
                 # Process the results.
                 if action == "success":
@@ -418,7 +431,8 @@ def configure_menu(config):
             choices=[
                 Choice("1. Mode", value="mode"),
                 Choice("2. AI Provider/Model", value="provider"),
-                Choice("3. System setup", value="system"),
+                Choice("3. Adjust some features.", value="features"),
+                Choice("4. System setup", value="system"),
                 Choice("<- Back", value="back"),
             ],
         ).ask()
@@ -588,6 +602,62 @@ def configure_menu(config):
                     print(f"\nConfiguration saved: {provider} -> {model}")
                     input("Press Enter to continue...")
                     break
+
+            case "features":
+                clear_screen()
+                f_conf = config.setdefault("features", {})
+
+                selected = q.checkbox(
+                    "Toggle Platform Features (Space to select, Enter to save):",
+                    choices=[
+                        Choice(
+                            "System Snapshot (Include RAM/Disk in prompt)",
+                            value="system_snapshot",
+                            checked=f_conf.get("system_snapshot", True),
+                        ),
+                        Choice(
+                            "Auto-Capture (Intercept script errors)",
+                            value="auto_capture",
+                            checked=f_conf.get("auto_capture", True),
+                        ),
+                        Choice(
+                            "Autonomous Mode (AI executes without <PID>)",
+                            value="autonomous_mode",
+                            checked=f_conf.get("autonomous_mode", False),
+                        ),
+                        Choice(
+                            "Auto-Summary (Generate short log titles)",
+                            value="auto_summary",
+                            checked=f_conf.get("auto_summary", True),
+                        ),
+                        Choice(
+                            "Circuit Breaker (Limit attempts to 3, ask if needed more attempts)",
+                            value="circuit_breaker",
+                            checked=f_conf.get("circuit_breaker", True),
+                        ),
+                        Choice(
+                            "Smart Placeholders (Ask for missing values)",
+                            value="smart_placeholders",
+                            checked=f_conf.get("smart_placeholders", True),
+                        ),
+                    ],
+                ).ask()
+
+                if selected is not None:
+                    keys = [
+                        "system_snapshot",
+                        "auto_capture",
+                        "autonomous_mode",
+                        "auto_summary",
+                        "circuit_breaker",
+                        "smart_placeholders",
+                    ]
+                    for key in keys:
+                        config["features"][key] = key in selected
+
+                    save_config(config)
+                    print("\n[+] Features updated successfully.")
+                    input("Press Enter to continue...")
 
             case "system":
                 while True:
