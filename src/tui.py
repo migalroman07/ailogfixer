@@ -4,6 +4,7 @@ import os
 import re
 
 import questionary as q
+from dotenv import set_key
 from questionary import Choice
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -63,8 +64,15 @@ def resolve_placeholders(script: str) -> str | None:
     if not placeholders:
         return script
 
-    print("\n[!] Script requires manual variables.")
-    print("Hint: Press Ctrl+Z to suspend app, find info, then type 'fg' to return.\n")
+    # Show the script context before asking for input
+    print("\n========== [Script Requires Manual Variables] ==========")
+    print(script.strip())
+    print("========================================================\n")
+
+    print("[!] Please provide the missing values.")
+    print(
+        "Hint: Press Ctrl+Z to suspend app, find info in terminal, then type 'fg' to return.\n"
+    )
 
     for ph in placeholders:
         val = q.text(f"Value for {ph} (empty to abort):").ask()
@@ -115,6 +123,35 @@ def fix_log(log: Incident, config: dict, db: Session):
 
     while True:
         clear_screen()
+
+        if log.attempt > 3:
+            print(
+                f"\n[-] LIMIT REACHED: AI failed to solve log ID {log.id} after 3 attempts."
+            )
+            print("[!] This usually means the problem requires human intervention.")
+
+            action = q.select(
+                "What to do with this incident?",
+                choices=[
+                    Choice("1. Force 1 more attempt", value="retry"),
+                    Choice("2. Delete log and exit", value="delete"),
+                    Choice("3. Keep in waiting and exit", value="exit"),
+                ],
+            ).ask()
+
+            if action == "retry":
+                log.attempt = 3
+            elif action == "delete":
+                db.delete(log)
+                db.commit()
+                print("\n[+] Log deleted.")
+                input("Press Enter to return...")
+                break
+            else:
+                log.status = "waiting"
+                db.commit()
+                break
+
         print(f"\n[*] Analyzing log ID {log.id} (Attempt {log.attempt})...\n")
 
         try:
@@ -239,15 +276,45 @@ def fix_log(log: Incident, config: dict, db: Session):
                 log.status = "waiting"
                 db.commit()
 
-                os.system(f"{script_path}")
+                # Save output.
+                log_file = "/tmp/aifixer_script.log"
+                # Execute via bash. jj
+                cmd = f"bash -c 'set -o pipefail; {script_path} 2>&1 | tee {log_file}'"
 
-                action, err_text = ask_for_feedback()
+                print("\n[*] Executing script...")
+                exit_status = os.system(cmd)
 
+                # Translate into postcode.
+                exit_code = (exit_status >> 8) if os.name == "posix" else exit_status
+
+                if exit_code == 0:
+                    # Script did well, so just ask if helped.
+                    action, err_text = ask_for_feedback()
+                else:
+                    print(f"\n[-] Script failed with bash exit code {exit_code}.")
+
+                    # Try to read captured error from terminal
+                    err_text = ""
+                    if os.path.exists(log_file):
+                        with open(log_file, "r", encoding="utf-8") as f:
+                            # Send only 30 lines to not waste tokens.
+                            err_text = "".join(f.readlines()[-30:]).strip()
+
+                    if q.confirm(
+                        "Auto-capture this error and send to AI for a fix right now?"
+                    ).ask():
+                        action = "error"
+                        err_text = err_text or f"Unknown exit code {exit_code}"
+                    else:
+                        action = "abort"
+                        err_text = None
+
+                # Process the results.
                 if action == "success":
                     log.status = "resolved"
                     log.executed = False
                     db.commit()
-                    print("\n[+] Incident resolved.")
+                    print("\n[+] Incident resolved successfully.")
                     break
                 elif action == "error":
                     if err_text:
@@ -413,6 +480,9 @@ def configure_menu(config):
                     if not new_provider or new_provider == "back":
                         break
 
+                    # Get .env file.
+                    env_path = os.path.join(BASE_DIR, ".env")
+
                     if new_provider == "new":
                         provider = q.text("Enter provider name: ").ask()
                         if not provider:
@@ -422,34 +492,64 @@ def configure_menu(config):
                         if not base_url:
                             continue
 
-                        api_key = q.text("Enter API key: ").ask()
-                        if not api_key:
+                        # GEt the api key.
+                        actual_key = q.password(
+                            f"Enter the SECRET API key for {provider} (input hidden): "
+                        ).ask()
+                        if not actual_key:
                             continue
 
+                        # Auto-generate new var name
+                        api_key_var = f"{provider.upper().replace(' ', '_')}_API_KEY"
+
+                        # Create if not exists.
+                        if not os.path.exists(env_path):
+                            open(env_path, "a").close()
+
+                        set_key(env_path, api_key_var, actual_key)
+
+                        # Refresh python's memory
+                        os.environ[api_key_var] = actual_key
+
+                        # Save to config
                         config["providers"][provider] = {
                             "base_url": base_url,
-                            "api_key": api_key,
+                            "api_key": api_key_var,
                             "model": "",
                             "available_models": [],
                         }
                     else:
                         provider = new_provider
-                        if config["providers"][provider]["api_key"] == "":
-                            api_key = q.text(
-                                f"API key not found. Enter API key for {provider}:"
+                        if config["providers"][provider].get("api_key") == "":
+                            # Get the token
+                            actual_key = q.password(
+                                f"API key missing. Enter the secret api key for {provider}:"
                             ).ask()
-                            if api_key:
-                                config["providers"][provider]["api_key"] = api_key
-                                os.system("clear" if os.name == "posix" else "cls")
-                                input("API key saved.")
-                            else:
-                                os.system("clear" if os.name == "posix" else "cls")
-                                input("API key is empty.")
-                                continue
 
+                            if actual_key:
+                                api_key_var = (
+                                    f"{provider.upper().replace(' ', '_')}_API_KEY"
+                                )
+
+                                if not os.path.exists(env_path):
+                                    open(env_path, "a").close()
+
+                                set_key(env_path, api_key_var, actual_key)
+                                os.environ[api_key_var] = actual_key
+
+                                config["providers"][provider]["api_key"] = api_key_var
+                                clear_screen()
+                                print(
+                                    f"[+] Config updated. Key securely saved to .env as {api_key_var}"
+                                )
+                                input("Press Enter to continue...")
+                            else:
+                                clear_screen()
+                                print("[-] Input is empty.")
+                                continue
                     config["ai_provider"] = provider
 
-                    os.system("clear" if os.name == "posix" else "cls")
+                    clear_screen()
                     models = list(
                         map(
                             Choice,

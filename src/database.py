@@ -1,19 +1,29 @@
+import os
+import sys
 from datetime import datetime
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Integer,
-    String,
-    Text,
-    create_engine,
-    func,
-)
+from dotenv import load_dotenv
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, create_engine, func
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column, sessionmaker
 
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/ailogs"
+from src.config import BASE_DIR
 
+# Load environment variables from the root .env file
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+# Fetch the Postgres url from the .env file
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
+
+# If there is no DB connection string, terminate the app immediately
+if not SQLALCHEMY_DATABASE_URL or not SQLALCHEMY_DATABASE_URL.startswith("postgresql"):
+    print(
+        "[-] CRITICAL ERROR: Valid PostgreSQL DATABASE_URL is missing in the .env file."
+    )
+    print("[!] Please create a .env file and add your PostgreSQL connection string:")
+    print("    DATABASE_URL=postgresql://user:password@localhost:5432/dbname")
+    sys.exit(1)
+
+# PostgreSQL engine creation
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

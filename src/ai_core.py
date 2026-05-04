@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import subprocess
 
 import httpx
 from dotenv import load_dotenv
@@ -82,6 +83,20 @@ def extract_json_data(text: str) -> tuple[str, str]:
     # TODO: impelment retrying if ai hallucinated
 
 
+def _get_system_snapshot() -> str:
+    """Gathers real-time system metrics (RAM, Disk space) for AI context."""
+    try:
+        ram = subprocess.run(
+            ["free", "-m"], capture_output=True, text=True
+        ).stdout.strip()
+        disk = subprocess.run(
+            ["df", "-h", "/"], capture_output=True, text=True
+        ).stdout.strip()
+        return f"\n\n--- SYSTEM SNAPSHOT ---\nRAM Usage (MB):\n{ram}\n\nDisk Usage (/):\n{disk}\n-----------------------"
+    except Exception:
+        return ""
+
+
 def generate_solution(
     raw_log: str, config: dict, prev_error: str = ""
 ) -> tuple[str, str]:
@@ -90,13 +105,26 @@ def generate_solution(
 
     max_len = config["system"].get("max_log_length", 2000)
     trimmed_log = raw_log[-max_len:]
-    prompt = f"{PROMPT_TEMPLATE}\n{trimmed_log}"
 
+    # Append real-time metrics to the prompt
+    sys_snapshot = _get_system_snapshot()
+    prompt = f"{PROMPT_TEMPLATE}\nSystem Log:\n{trimmed_log}{sys_snapshot}"
+
+    # Inject autonomous mode rules dynamically
     if config.get("system", {}).get("autonomous_mode"):
-        prompt += "\n\nRULE: AUTONOMOUS MODE ON. DO NOT use placeholders. Write dynamic bash logic (e.g. use lsof/awk to find values)."
+        prompt += (
+            "\n\nRULE: AUTONOMOUS MODE ON. DO NOT use placeholders. "
+            "Write dynamic bash logic (e.g., use lsof/awk to find values automatically)."
+        )
     else:
-        prompt += "\n\nRULE: SAFE MODE. Use placeholders like <PID> or [IP] if exact values are unknown."
+        prompt += (
+            "\n\nRULE: SAFE MODE. Use placeholders like <PID> or [IP]. "
+            "CRITICAL REQUIREMENT: If you use a placeholder, you MUST add a bash comment (#) "
+            "right above the command, explaining EXACTLY what terminal command the user "
+            "should run to find this missing value."
+        )
 
+    # Handle previous error if needed.
     if prev_error:
         prompt += f"\n\n[USER FEEDBACK] The previous generated script failed with the following error:\n{prev_error}\n\nAnalyze this error, update your JSON output to provide a fully corrected bash script."
 
