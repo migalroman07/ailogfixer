@@ -8,7 +8,7 @@ from src.tui import main_menu
 def main():
     parser = ap.ArgumentParser(description="SysHealerAI")
     parser.add_argument(
-        "-v", "--version", action="version", version="SysHealerAi v1.0.0"
+        "-v", "--version", action="version", version="SysHealerAI v1.0.0"
     )
     parser.add_argument(
         "--scan", action="store_true", help="Force system scan in background."

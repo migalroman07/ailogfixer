@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================="
-echo "          AIFixer - Installation          "
+echo "        SysHealerAI - Installation        "
 echo "=========================================="
 
 if [ "$EUID" -ne 0 ]; then
@@ -21,18 +21,18 @@ fi
 sudo -u "$REAL_USER" "$PROJECT_DIR/ai_env/bin/pip" install --upgrade pip -q
 sudo -u "$REAL_USER" "$PROJECT_DIR/ai_env/bin/pip" install -r "$PROJECT_DIR/requirements.txt" -q
 
-echo "[*] 2. Creating global CLI command 'aifixer'..."
-cat << EOF > /usr/local/bin/aifixer
+echo "[*] 2. Creating global CLI command 'syshealer'..."
+cat << EOF > /usr/local/bin/syshealer
 #!/bin/bash
 cd "$PROJECT_DIR"
 exec "$PROJECT_DIR/ai_env/bin/python3" "$PROJECT_DIR/ai_fixer.py" "\$@"
 EOF
-chmod +x /usr/local/bin/aifixer
+chmod +x /usr/local/bin/syshealer
 
 echo "[*] 3. Setting up Systemd Background Daemon..."
-cat << EOF > /etc/systemd/system/aifixer.service
+cat << EOF > /etc/systemd/system/syshealer.service
 [Unit]
-Description=AIFixer Background AI Daemon
+Description=SysHealerAI Background AI Daemon
 After=network.target
 
 [Service]
@@ -50,12 +50,12 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now aifixer.service
+systemctl enable --now syshealer.service
 
 echo "=========================================="
 echo "[+] Success! AIFixer is ready to use."
 echo "    Background daemon is active and monitoring."
 echo ""
 echo "You can now launch the app from anywhere by typing:"
-echo "    aifixer"
+echo "    syshealer"
 echo "=========================================="

@@ -7,14 +7,15 @@ from sqlalchemy.orm import Session
 
 from src.ai_core import generate_solution
 from src.collector import collect_logs
-from src.config import load_config
+from src.config import BASE_DIR, load_config
 from src.database import Incident, SessionLocal
 
 
 def log_daemon(msg: str):
-    os.makedirs("data", exist_ok=True)
+    data_dir = os.path.join(BASE_DIR, "data")
+    os.makedirs(data_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open("data/daemon.log", "a", encoding="utf-8") as f:
+    with open(os.path.join(data_dir, "daemon.log"), "a", encoding="utf-8") as f:
         f.write(f"[{timestamp}] {msg}\n")
 
 
@@ -27,7 +28,7 @@ def daemon_fixer(pending_logs, config, db: Session):
 
             explanation, clean_commands = generate_solution(log.raw_log, config)
             if clean_commands and "MANUAL_INTERVENTION_REQUIRED" not in clean_commands:
-                script_dir = os.path.join("data", "scripts")
+                script_dir = os.path.join(BASE_DIR, "data", "scripts")
                 os.makedirs(script_dir, exist_ok=True)
                 script_path = os.path.join(script_dir, f"fix_incident_{log.id}.sh")
 

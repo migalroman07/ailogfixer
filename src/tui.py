@@ -286,7 +286,7 @@ def fix_log(log: Incident, config: dict, db: Session):
 
                 # Save output.
                 auto_capture = features.get("auto_capture", True)
-                log_file = "/tmp/aifixer_script.log"
+                log_file = "/tmp/syshealer_script.log"
                 # Execute via bash. jj
                 if auto_capture:
                     cmd = f"bash -c 'set -o pipefail; {script_path} 2>&1 | tee {log_file}'"
