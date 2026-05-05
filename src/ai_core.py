@@ -24,7 +24,7 @@ You MUST respond STRICTLY with a valid JSON object. Do NOT wrap the JSON in mark
 The JSON object MUST contain exactly these 3 keys:
 {
   "reasoning": "Step-by-step detailed analysis of the root cause. This is your scratchpad to think deeply. Be as detailed as you want here.",
-  "short_desc": "A VERY brief summary of the issue IN RUSSIAN (MAXIMUM 5-7 words). Example: 'Порт 8080 занят другим процессом'.",
+  "short_desc": "A VERY brief summary of the issue (MAXIMUM 5-7 words). Example: 'Port 8080 is busy with some process.'.",
   "script": "#!/bin/bash\\n\\n# Your final executable bash script here. Put all explanations as bash comments (#) INSIDE this script."
 }
 
@@ -32,11 +32,11 @@ System Log:
 """
 
 DESC_PROMPT = """You are a Linux Server Monitor. Analyze the following system log snippet.
-Provide a VERY SHORT summary of the problem IN RUSSIAN.
+Provide a VERY SHORT summary of the problem.
 RULES:
 1. Maximum 5-7 words.
 2. Only output the summary text, no conversational filler.
-Example: 'Служба Nginx упала из-за порта 80' or 'Нехватка места на диске'.
+Example: 'Not enough space on the disk'.
 
 System Log:
 """

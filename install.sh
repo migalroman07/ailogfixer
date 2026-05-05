@@ -25,7 +25,7 @@ echo "[*] 2. Creating global CLI command 'syshealer'..."
 cat << EOF > /usr/local/bin/syshealer
 #!/bin/bash
 cd "$PROJECT_DIR"
-exec "$PROJECT_DIR/ai_env/bin/python3" "$PROJECT_DIR/ai_fixer.py" "\$@"
+exec "$PROJECT_DIR/ai_env/bin/python3" "$PROJECT_DIR/main.py" "\$@"
 EOF
 chmod +x /usr/local/bin/syshealer
 

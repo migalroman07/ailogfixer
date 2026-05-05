@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 import argparse as ap
+import os
 import sys
 
 from src.tui import main_menu
+
+if os.geteuid() != 0:
+    print("Error: SysHealerAI requires root to access system logs and services.")
+    print("Please run: \n\tsudo syshealer")
+    sys.exit(1)
 
 
 def main():

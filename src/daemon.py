@@ -1,5 +1,4 @@
 import os
-import threading
 import time
 from datetime import datetime
 
@@ -14,9 +13,19 @@ from src.database import Incident, SessionLocal
 def log_daemon(msg: str):
     data_dir = os.path.join(BASE_DIR, "data")
     os.makedirs(data_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.now().strftime("%H:%M:%S")
+
+    # Truncate logic: keep first 40 and last 40 chars if too long
+    max_len = 100
+    if len(msg) > max_len:
+        start_part = msg[:40]
+        end_part = msg[-40:]
+        formatted_msg = f"{start_part} ... {end_part}"
+    else:
+        formatted_msg = msg
+
     with open(os.path.join(data_dir, "daemon.log"), "a", encoding="utf-8") as f:
-        f.write(f"[{timestamp}] {msg}\n")
+        f.write(f"[{timestamp}] {formatted_msg}\n")
 
 
 def daemon_fixer(pending_logs, config, db: Session):

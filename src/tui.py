@@ -396,7 +396,7 @@ def fix_menu():
                 # TODO: implement decent log shorten function
                 ui_choices.append(
                     Choice(
-                        f"ID {log.id} | {log.raw_log.replace('\n', ' ')[40:110]}"
+                        f"ID {log.id} | {log.raw_log.replace('\n', ' ')}"
                         + explanation,
                         value=log,
                     )
@@ -666,7 +666,6 @@ def configure_menu(config):
                         "========== System Setup ==========",
                         choices=[
                             Choice("1. Max log length", value="max_log"),
-                            Choice("2. Toggle autonomous mode", value="auto_mode"),
                             Choice("<- Back", value="back"),
                         ],
                     ).ask()
@@ -682,14 +681,14 @@ def configure_menu(config):
                             print(f"\nMax log length changed to {new_len}.")
                             input("Press Enter to continue...")
 
-                    elif sys_opt == "auto_mode":
-                        # TODO: implement warning message
-                        # if q.confirm("WARNING! ")
-                        curr = config["system"].get("autonomous_mode", False)
-                        config["system"]["autonomous_mode"] = not curr
-                        save_config(config)
-                        print(f"\nAutonomous mode set to: {not curr}")
-                        input("Press Enter to continue...")
+                    # elif sys_opt == "auto_mode":
+                    #     # TODO: implement warning message
+                    #     # if q.confirm("WARNING! ")
+                    #     curr = config["system"].get("autonomous_mode", False)
+                    #     config["system"]["autonomous_mode"] = not curr
+                    #     save_config(config)
+                    #     print(f"\nAutonomous mode set to: {not curr}")
+                    #     input("Press Enter to continue...")
 
 
 def main_menu():
