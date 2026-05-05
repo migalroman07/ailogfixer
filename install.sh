@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================="
-echo "    AIFixer - System-Wide Installation    "
+echo "          AIFixer - Installation          "
 echo "=========================================="
 
 if [ "$EUID" -ne 0 ]; then
@@ -10,43 +10,26 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-if [ -n "$SUDO_USER" ]; then
-    REAL_USER="$SUDO_USER"
-else
-    REAL_USER=$(whoami)
-fi
-
-INSTALL_DIR="/opt/aifixer"
-BIN_PATH="/usr/local/bin/aifixer"
 PROJECT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+REAL_USER=${SUDO_USER:-$(whoami)}
 
-echo "[*] 1. Copying core files to $INSTALL_DIR..."
-mkdir -p "$INSTALL_DIR"
-cp -r "$PROJECT_DIR/src" "$INSTALL_DIR/" 2>/dev/null || true
-cp "$PROJECT_DIR/main.py" "$INSTALL_DIR/"
-cp "$PROJECT_DIR/requirements.txt" "$INSTALL_DIR/"
-
-if [ -f "$PROJECT_DIR/.env" ]; then
-    cp "$PROJECT_DIR/.env" "$INSTALL_DIR/"
+echo "[*] 1. Preparing local Python environment..."
+if [ ! -d "$PROJECT_DIR/ai_env" ]; then
+    sudo -u "$REAL_USER" python3 -m venv "$PROJECT_DIR/ai_env"
 fi
 
-chown -R "$REAL_USER:$REAL_USER" "$INSTALL_DIR"
+sudo -u "$REAL_USER" "$PROJECT_DIR/ai_env/bin/pip" install --upgrade pip -q
+sudo -u "$REAL_USER" "$PROJECT_DIR/ai_env/bin/pip" install -r "$PROJECT_DIR/requirements.txt" -q
 
-echo "[*] 2. Setting up isolated Python environment..."
-apt-get update -yqq && apt-get install python3-venv -yqq >/dev/null 2>&1 || true
-
-sudo -u "$REAL_USER" python3 -m venv "$INSTALL_DIR/ai_env"
-sudo -u "$REAL_USER" "$INSTALL_DIR/ai_env/bin/pip" install -r "$INSTALL_DIR/requirements.txt" --quiet
-
-echo "[*] 3. Creating global CLI command 'aifixer'..."
-cat << 'EOF' > "$BIN_PATH"
+echo "[*] 2. Creating global CLI command 'aifixer'..."
+cat << EOF > /usr/local/bin/aifixer
 #!/bin/bash
-cd /opt/aifixer
-exec /opt/aifixer/ai_env/bin/python3 main.py "$@"
+cd "$PROJECT_DIR"
+exec "$PROJECT_DIR/ai_env/bin/python3" "$PROJECT_DIR/ai_fixer.py" "\$@"
 EOF
-chmod +x "$BIN_PATH"
+chmod +x /usr/local/bin/aifixer
 
-echo "[*] 4. Setting up Background Daemon..."
+echo "[*] 3. Setting up Systemd Background Daemon..."
 cat << EOF > /etc/systemd/system/aifixer.service
 [Unit]
 Description=AIFixer Background AI Daemon
@@ -55,9 +38,9 @@ After=network.target
 [Service]
 Type=simple
 User=$REAL_USER
-WorkingDirectory=$INSTALL_DIR
+WorkingDirectory=$PROJECT_DIR
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$INSTALL_DIR/ai_env/bin/python3 $INSTALL_DIR/src/daemon.py
+ExecStart=$PROJECT_DIR/ai_env/bin/python3 $PROJECT_DIR/src/daemon.py
 
 Restart=always
 RestartSec=5
@@ -70,9 +53,9 @@ systemctl daemon-reload
 systemctl enable --now aifixer.service
 
 echo "=========================================="
-echo "[+] Success! AIFixer is now installed globally."
-echo "    - Background daemon is active and monitoring."
+echo "[+] Success! AIFixer is ready to use."
+echo "    Background daemon is active and monitoring."
 echo ""
-echo "Launch the UI from anywhere in your terminal by typing:"
+echo "You can now launch the app from anywhere by typing:"
 echo "    aifixer"
 echo "=========================================="
