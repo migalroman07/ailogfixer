@@ -19,6 +19,6 @@ echo "[*] 3. Cleaning up Python virtual environment..."
 PROJECT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 rm -rf "$PROJECT_DIR/ai_env"
 
-echo "[+] SUCCESS! AIFixer system components have been removed."
-echo "    Your database config (.env) is kept safe."
+echo "[+] AIFixer system components have been removed."
+echo "    Your database config is kept safe."
 echo "    To delete the project completely, just remove this folder."
