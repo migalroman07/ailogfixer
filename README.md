@@ -32,13 +32,22 @@ Built on a decoupled microservice architecture, the daemon and TUI operate indep
 
 SysHealerAI uses an isolated in-place installation method to prevent OS dependency conflicts.
 
-1. Clone the repository:
+1. Install and Configure PostgreSQL
+    SysHealerAI relies on a local PostgreSQL server. If you don't have it installed, run (for Debian/Ubuntu):
+    ```bash
+    sudo apt update && sudo apt install postgresql -y
+    sudo systemctl enable --now postgresql```
+
+    # Set the password for the default 'postgres' user to 'password'
+    sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'password';"
+
+2. Clone the repository:
    ```bash
    git clone https://github.com/yourusername/syshealer.git
    cd syshealer
    ```
 
-2. Configure the database connection:
+3. Configure the database connection:
    Create a `.env` file in the project root based on the template.
    ```bash
    cp .env.example .env
@@ -49,7 +58,7 @@ SysHealerAI uses an isolated in-place installation method to prevent OS dependen
    ```
    *Note: SysHealerAI will automatically create the target database if it does not exist and the provided PostgreSQL user has sufficient privileges.*
 
-3. Run the installation script as root:
+4. Run the installation script as root:
    ```bash
    sudo bash install.sh
    ```

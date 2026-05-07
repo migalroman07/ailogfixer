@@ -56,7 +56,7 @@ try:
     # Kill temporary connection.
     temp_engine.dispose()
 
-finally:
+except Exception:
     pass
 
 # PostgreSQL engine creation
