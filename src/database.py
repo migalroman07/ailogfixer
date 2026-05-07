@@ -3,7 +3,17 @@ import sys
 from datetime import datetime
 
 from dotenv import load_dotenv
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, create_engine, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    func,
+    text,
+)
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column, sessionmaker
 
 from src.config import BASE_DIR
@@ -16,12 +26,38 @@ SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
 # If there is no DB connection string, terminate the app immediately
 if not SQLALCHEMY_DATABASE_URL or not SQLALCHEMY_DATABASE_URL.startswith("postgresql"):
-    print(
-        "[-] CRITICAL ERROR: Valid PostgreSQL DATABASE_URL is missing in the .env file."
-    )
+    print("[-] ERROR: Valid PostgreSQL DATABASE_URL is missing in the .env file.")
     print("[!] Please create a .env file and add your PostgreSQL connection string:")
     print("    DATABASE_URL=postgresql://user:password@localhost:5432/dbname")
     sys.exit(1)
+
+
+try:
+    # Get database name from URL
+    url_obj = make_url(SQLALCHEMY_DATABASE_URL)
+    target_db = url_obj.database
+
+    admin_url = url_obj.set(database="postgres")
+
+    temp_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
+
+    with temp_engine.connect() as conn:
+        # Check if DB already exists.
+        exists = conn.execute(
+            text(f"SELECT 1 FROM pg_database WHERE datname = '{target_db}'")
+        ).scalar()
+
+        if not exists:
+            print(f"[*] PostgreSQL database '{target_db}' not found. Auto-creating...")
+            # Create the database.
+            conn.execute(text(f'CREATE DATABASE "{target_db}"'))
+            print(f"[+] Database '{target_db}' created successfully!")
+
+    # Kill temporary connection.
+    temp_engine.dispose()
+
+finally:
+    pass
 
 # PostgreSQL engine creation
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
