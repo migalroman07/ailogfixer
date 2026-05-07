@@ -391,13 +391,18 @@ def fix_menu():
             for log in requested_logs:
                 desc = getattr(log, "ai_log_review")
 
-                explanation = str("\n" + desc) if desc and desc != "No desc" else ""
+                explanation = (
+                    str("\n" + desc) if desc and desc != "No desc" else "=" * 30
+                )
 
-                # TODO: implement decent log shorten function
+                # Shorten long logs for better UI display
+                log_preview = log.raw_log.replace("\n", " ")
+                if len(log_preview) > 80:
+                    log_preview = log_preview[:77] + "..."
+
                 ui_choices.append(
                     Choice(
-                        f"ID {log.id} | {log.raw_log.replace('\n', ' ')}"
-                        + explanation,
+                        f"ID {log.id} | {log_preview}" + explanation,
                         value=log,
                     )
                 )
@@ -680,15 +685,6 @@ def configure_menu(config):
                             save_config(config)
                             print(f"\nMax log length changed to {new_len}.")
                             input("Press Enter to continue...")
-
-                    # elif sys_opt == "auto_mode":
-                    #     # TODO: implement warning message
-                    #     # if q.confirm("WARNING! ")
-                    #     curr = config["system"].get("autonomous_mode", False)
-                    #     config["system"]["autonomous_mode"] = not curr
-                    #     save_config(config)
-                    #     print(f"\nAutonomous mode set to: {not curr}")
-                    #     input("Press Enter to continue...")
 
 
 def main_menu():

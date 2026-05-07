@@ -80,7 +80,6 @@ def extract_json_data(text: str) -> tuple[str, str]:
         return desc.strip(), script.strip()
     except json.JSONDecodeError:
         return "JSON reading error", text.strip()
-    # TODO: impelment retrying if ai hallucinated
 
 
 def _get_system_snapshot() -> str:
