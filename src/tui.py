@@ -4,7 +4,7 @@ import os
 import re
 
 import questionary as q
-from dotenv import set_key
+from dotenv import get_key, set_key
 from questionary import Choice
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -392,7 +392,9 @@ def fix_menu():
                 desc = getattr(log, "ai_log_review")
 
                 explanation = (
-                    str("\n" + desc) if desc and desc != "No desc" else "=" * 30
+                    str("\n" + desc)
+                    if desc and desc != "No desc"
+                    else ("\n" + "=" * 30)
                 )
 
                 # Shorten long logs for better UI display
@@ -539,16 +541,19 @@ def configure_menu(config):
                         }
                     else:
                         provider = new_provider
-                        if config["providers"][provider].get("api_key") == "":
-                            # Get the token
+                        api_key_var = config["providers"][provider].get("api_key", "")
+
+                        if not api_key_var or not get_key(env_path, api_key_var):
+
                             actual_key = q.password(
-                                f"API key missing. Enter the secret api key for {provider}:"
+                                f"API key missing in .env. Enter the secret api key for {provider}:"
                             ).ask()
 
                             if actual_key:
-                                api_key_var = (
-                                    f"{provider.upper().replace(' ', '_')}_API_KEY"
-                                )
+                                if not api_key_var:
+                                    api_key_var = (
+                                        f"{provider.upper().replace(' ', '_')}_API_KEY"
+                                    )
 
                                 if not os.path.exists(env_path):
                                     open(env_path, "a").close()

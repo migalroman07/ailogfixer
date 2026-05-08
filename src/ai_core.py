@@ -7,7 +7,10 @@ import httpx
 from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv()
+from src.config import BASE_DIR
+
+env_path = os.path.join(BASE_DIR, ".env")
+load_dotenv(env_path, override=True)
 
 PROMPT_TEMPLATE = """You are an Expert Linux DevOps Engineer resolving a production incident.
 
@@ -50,9 +53,12 @@ def _get_ai_client(config: dict) -> tuple[OpenAI, str]:
     model = provider_settings["model"]
     key_placeholder = provider_settings.get("api_key")
 
-    actual_api_key = os.getenv(key_placeholder) if key_placeholder else None
-    if not actual_api_key:
-        actual_api_key = key_placeholder
+    actual_api_key = os.getenv(key_placeholder)
+
+    if not actual_api_key and provider != "ollama":
+        raise ValueError(
+            f"API Key not found! Please ensure {key_placeholder} is set in .env"
+        )
 
     custom_client = httpx.Client(trust_env=False)
 
